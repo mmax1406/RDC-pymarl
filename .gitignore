@@ -1,3 +1,5 @@
 **/venv/
+**/venv38/
 **.log
+*.pyc
 **/__pycache__/
