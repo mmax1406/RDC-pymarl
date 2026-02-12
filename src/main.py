@@ -3,6 +3,12 @@ import random
 import numpy as np
 import os
 import collections
+if not hasattr(collections, 'Mapping'):
+    import collections.abc
+    collections.Mapping = collections.abc.Mapping
+    collections.MutableMapping = collections.abc.MutableMapping
+    collections.Sequence = collections.abc.Sequence
+    collections.Iterable = collections.abc.Iterable
 from os.path import dirname, abspath, join
 from copy import deepcopy
 from sacred import Experiment, SETTINGS
