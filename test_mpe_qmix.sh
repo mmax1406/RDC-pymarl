@@ -1,7 +1,3 @@
-import re
-
-# The raw block of commands you provided
-raw_commands = """
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++MPE+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 # -------------------------------------------------------------TAG-------------------------------------------------------------
 sh ./test_f.sh 'CUDA_VISIBLE_DEVICES="0" nohup python -u src/main.py --config=pd_qmix_gru4mpe --env-config=gymma with env_args.key="pz-mpe-simple-tag-v3" env_args.pretrained_wrapper="PretrainedTag" predictor_mode="none" exp_name="TAG-QMIX-B" test_nepisode=1280 evaluate=True checkpoint_path=""' 'tag_test_qmix_b.log'
@@ -117,7 +113,7 @@ sh ./test_uf.sh 'CUDA_VISIBLE_DEVICES="1" nohup python -u src/main.py --config=p
 sh ./test_uf.sh 'CUDA_VISIBLE_DEVICES="1" nohup python -u src/main.py --config=pd_qmix_gru4mpe --env-config=gymma with env_args.key="pz-mpe-simple-tag-v3" env_args.pretrained_wrapper="PretrainedTag" predictor_mode="single_step" use_history=True teacher_forcing_start_value=1.0 exp_name="TAG-QMIX-GRU-SS-H-TF" test_nepisode=1280 evaluate=True checkpoint_path=""' 'tag_test_qmix_gru_ss_h_tf.log'
 
 
-#-------------------------------------------------------------SPREAD-------------------------------------------------------------
+-------------------------------------------------------------SPREAD-------------------------------------------------------------
 sh ./test_uf.sh 'CUDA_VISIBLE_DEVICES="0" nohup python -u src/main.py --config=pd_qmix_gru4mpe --env-config=gymma with env_args.key="pz-mpe-simple-spread-v3" predictor_mode="none" exp_name="SPREAD-QMIX-B" test_nepisode=1280 evaluate=True checkpoint_path=""' 'spread_test_qmix_b.log'
 sh ./test_uf.sh 'CUDA_VISIBLE_DEVICES="1" nohup python -u src/main.py --config=pd_qmix_gru4mpe --env-config=gymma with env_args.key="pz-mpe-simple-spread-v3" predictor_mode="none" exp_name="SPREAD-QMIX-N" test_nepisode=1280 evaluate=True checkpoint_path=""' 'spread_test_qmix_n.log'
 sh ./test_uf.sh 'CUDA_VISIBLE_DEVICES="2" nohup python -u src/main.py --config=pd_qmix_gru4mpe --env-config=gymma with env_args.key="pz-mpe-simple-spread-v3" predictor_mode="none" exp_name="SPREAD-QMIX-DA" test_nepisode=1280 evaluate=True checkpoint_path=""' 'spread_test_qmix_da.log'
@@ -154,43 +150,34 @@ sh ./test_uf.sh 'CUDA_VISIBLE_DEVICES="1" nohup python -u src/main.py --config=p
 sh ./test_uf.sh 'CUDA_VISIBLE_DEVICES="3" nohup python -u src/main.py --config=pd_qmix_gru4mpe --env-config=gymma with env_args.key="pz-mpe-simple-spread-v3" predictor_mode="multi_step" use_history=True teacher_forcing_start_value=1.0 exp_name="SPREAD-QMIX-GRU-MS-H-TF" test_nepisode=1280 evaluate=True checkpoint_path=""' 'spread_test_qmix_gru_ms_h_tf.log'
 sh ./test_uf.sh 'CUDA_VISIBLE_DEVICES="3" nohup python -u src/main.py --config=pd_qmix_gru4mpe --env-config=gymma with env_args.key="pz-mpe-simple-spread-v3" predictor_mode="single_step" use_history=True teacher_forcing_start_value=1.0 exp_name="SPREAD-QMIX-GRU-SS-H-TF" test_nepisode=1280 evaluate=True checkpoint_path=""' 'spread_test_qmix_gru_ss_h_tf.log'
 
-"""
 
-def clean_command(line):
-    line = line.strip()
-    # Skip empty lines or comments
-    if not line or line.startswith("#"):
-        return None
-    
-    # 1. Remove CUDA_VISIBLE_DEVICES="X"
-    line = re.sub(r'CUDA_VISIBLE_DEVICES="\d+"\s+', '', line)
-    
-    # 2. Remove nohup
-    line = re.sub(r'nohup\s+', '', line)
-    
-    # 3. FORCE 'python' to 'python3'
-    # This specifically looks for 'python' as a standalone word
-    line = re.sub(r'\bpython\b', 'python3', line)
-    
-    # 4. Remove output redirection (e.g., >> tag_qmix_b.log 2>&1)
-    # We remove this because SLURM handles logging via #SBATCH --output
-    line = re.sub(r'\s+>>.*$', '', line)
-    
-    # 5. Remove trailing ampersand (&)
-    line = line.rstrip('&').strip()
-    
-    return line
+-------------------------------------------------------------REFERENCE-------------------------------------------------------------
+sh ./test_uf.sh 'CUDA_VISIBLE_DEVICES="0" nohup python -u src/main.py --config=pd_qmix_gru4mpe --env-config=gymma with env_args.key="pz-mpe-simple-reference-v3" predictor_mode="none" exp_name="REFERENCE-QMIX-B" test_nepisode=1280 evaluate=True checkpoint_path=""' 'reference_test_qmix_b.log'
+sh ./test_uf.sh 'CUDA_VISIBLE_DEVICES="1" nohup python -u src/main.py --config=pd_qmix_gru4mpe --env-config=gymma with env_args.key="pz-mpe-simple-reference-v3" predictor_mode="none" exp_name="REFERENCE-QMIX-N" test_nepisode=1280 evaluate=True checkpoint_path=""' 'reference_test_qmix_n.log'
+sh ./test_uf.sh 'CUDA_VISIBLE_DEVICES="2" nohup python -u src/main.py --config=pd_qmix_gru4mpe --env-config=gymma with env_args.key="pz-mpe-simple-reference-v3" predictor_mode="none" exp_name="REFERENCE-QMIX-DA" test_nepisode=1280 evaluate=True checkpoint_path=""' 'reference_test_qmix_da.log'
 
-# Process the lines
-cleaned_list = []
-for cmd in raw_commands.split('\n'):
-    cleaned = clean_command(cmd)
-    if cleaned:
-        cleaned_list.append(cleaned)
+#####transformer#####
+sh ./test_uf.sh 'CUDA_VISIBLE_DEVICES="0" nohup python -u src/main.py --config=pd_qmix_tf4mpe --env-config=gymma with env_args.key="pz-mpe-simple-reference-v3" predictor_mode="multi_step" transformer_structure="encoder-decoder" exp_name="REFERENCE-QMIX-TRANS-MS" test_nepisode=1280 evaluate=True checkpoint_path=""' 'reference_test_qmix_trans_ms.log'
+sh ./test_uf.sh 'CUDA_VISIBLE_DEVICES="1" nohup python -u src/main.py --config=pd_qmix_tf4mpe --env-config=gymma with env_args.key="pz-mpe-simple-reference-v3" predictor_mode="single_step" transformer_structure="encoder-decoder" exp_name="REFERENCE-QMIX-TRANS-SS" test_nepisode=1280 evaluate=True checkpoint_path=""' 'reference_test_qmix_trans_ss.log'
+sh ./test_uf.sh 'CUDA_VISIBLE_DEVICES="2" nohup python -u src/main.py --config=pd_qmix_tf4mpe --env-config=gymma with env_args.key="pz-mpe-simple-reference-v3" predictor_mode="multi_step" transformer_structure="encoder-decoder" use_history=True exp_name="REFERENCE-QMIX-TRANS-MS-H" test_nepisode=1280 evaluate=True checkpoint_path=""' 'reference_test_qmix_trans_ms_h.log'
+sh ./test_uf.sh 'CUDA_VISIBLE_DEVICES="3" nohup python -u src/main.py --config=pd_qmix_tf4mpe --env-config=gymma with env_args.key="pz-mpe-simple-reference-v3" predictor_mode="single_step" transformer_structure="encoder-decoder" use_history=True exp_name="REFERENCE-QMIX-TRANS-SS-H" test_nepisode=1280 evaluate=True checkpoint_path=""' 'reference_test_qmix_trans_ss_h.log'
+# teacher-student
+sh ./test_uf.sh 'CUDA_VISIBLE_DEVICES="0" nohup python -u src/main.py --config=pd_qmix_tf4mpe --env-config=gymma with env_args.key="pz-mpe-simple-reference-v3" predictor_mode="single_step" transformer_structure="encoder-decoder" exp_name="REFERENCE-QMIX-TRANS-SS-TEACHER" test_nepisode=1280 evaluate=True checkpoint_path=""' 'reference_test_qmix_trans_ss_teacher.log'
+sh ./test_uf.sh 'CUDA_VISIBLE_DEVICES="1" nohup python -u src/main.py --config=pd_qmix_tf4mpe --env-config=gymma with env_args.key="pz-mpe-simple-reference-v3" predictor_mode="single_step" transformer_structure="encoder-decoder" exp_name="REFERENCE-QMIX-TRANS-SS-STUDENT" test_nepisode=1280 evaluate=True checkpoint_path=""' 'reference_test_qmix_trans_ss_student.log'
+sh ./test_uf.sh 'CUDA_VISIBLE_DEVICES="2" nohup python -u src/main.py --config=pd_qmix_tf4mpe --env-config=gymma with env_args.key="pz-mpe-simple-reference-v3" predictor_mode="single_step" transformer_structure="encoder-decoder" use_history=True exp_name="REFERENCE-QMIX-TRANS-SS-H-TEACHER" test_nepisode=1280 evaluate=True checkpoint_path=""' 'reference_test_qmix_trans_ss_h_teacher.log'
+sh ./test_uf.sh 'CUDA_VISIBLE_DEVICES="3" nohup python -u src/main.py --config=pd_qmix_tf4mpe --env-config=gymma with env_args.key="pz-mpe-simple-reference-v3" predictor_mode="single_step" transformer_structure="encoder-decoder" use_history=True exp_name="REFERENCE-QMIX-TRANS-SS-H-STUDENT" test_nepisode=1280 evaluate=True checkpoint_path=""' 'reference_test_qmix_trans_ss_h_student.log'
 
-# Save to experiments.txt
-with open("test_experiments.txt", "w") as f:
-    for cmd in cleaned_list:
-        f.write(cmd + "\n")
+sh ./test_uf.sh 'CUDA_VISIBLE_DEVICES="2" nohup python -u src/main.py --config=pd_qmix_tf4mpe --env-config=gymma with env_args.key="pz-mpe-simple-reference-v3" predictor_mode="multi_step" transformer_structure="encoder-decoder" use_history=True exp_name="REFERENCE-QMIX-TRANS-MS-H-STUDENT" test_nepisode=1280 evaluate=True checkpoint_path=""' 'reference_test_qmix_trans_ms_h_student.log'
 
-print(f"Success! Generated experiments.txt with {len(cleaned_list)} cleaned python3 commands.")
+#####gru#####
+sh ./test_uf.sh 'CUDA_VISIBLE_DEVICES="0" nohup python -u src/main.py --config=pd_qmix_gru4mpe --env-config=gymma with env_args.key="pz-mpe-simple-reference-v3" predictor_mode="multi_step" exp_name="REFERENCE-QMIX-GRU-MS" test_nepisode=1280 evaluate=True checkpoint_path=""' 'reference_test_qmix_gru_ms.log'
+sh ./test_uf.sh 'CUDA_VISIBLE_DEVICES="1" nohup python -u src/main.py --config=pd_qmix_gru4mpe --env-config=gymma with env_args.key="pz-mpe-simple-reference-v3" predictor_mode="single_step" exp_name="REFERENCE-QMIX-GRU-SS" test_nepisode=1280 evaluate=True checkpoint_path=""' 'reference_test_qmix_gru_ss.log'
+sh ./test_uf.sh 'CUDA_VISIBLE_DEVICES="2" nohup python -u src/main.py --config=pd_qmix_gru4mpe --env-config=gymma with env_args.key="pz-mpe-simple-reference-v3" predictor_mode="multi_step" use_history=True exp_name="REFERENCE-QMIX-GRU-MS-H" test_nepisode=1280 evaluate=True checkpoint_path=""' 'reference_test_qmix_gru_ms_h.log'
+sh ./test_uf.sh 'CUDA_VISIBLE_DEVICES="3" nohup python -u src/main.py --config=pd_qmix_gru4mpe --env-config=gymma with env_args.key="pz-mpe-simple-reference-v3" predictor_mode="single_step" use_history=True exp_name="REFERENCE-QMIX-GRU-SS-H" test_nepisode=1280 evaluate=True checkpoint_path=""' 'reference_test_qmix_gru_ss_h.log'
+# teacher-student
+sh ./test_uf.sh 'CUDA_VISIBLE_DEVICES="0" nohup python -u src/main.py --config=pd_qmix_gru4mpe --env-config=gymma with env_args.key="pz-mpe-simple-reference-v3" predictor_mode="single_step" exp_name="REFERENCE-QMIX-GRU-SS-TEACHER" test_nepisode=1280 evaluate=True checkpoint_path=""' 'reference_test_qmix_gru_ss_teacher.log'
+sh ./test_uf.sh 'CUDA_VISIBLE_DEVICES="1" nohup python -u src/main.py --config=pd_qmix_gru4mpe --env-config=gymma with env_args.key="pz-mpe-simple-reference-v3" predictor_mode="single_step" exp_name="REFERENCE-QMIX-GRU-SS-STUDENT" test_nepisode=1280 evaluate=True checkpoint_path=""' 'reference_test_qmix_gru_ss_student.log'
+sh ./test_uf.sh 'CUDA_VISIBLE_DEVICES="2" nohup python -u src/main.py --config=pd_qmix_gru4mpe --env-config=gymma with env_args.key="pz-mpe-simple-reference-v3" predictor_mode="single_step" use_history=True exp_name="REFERENCE-QMIX-GRU-SS-H-TEACHER" test_nepisode=1280 evaluate=True checkpoint_path=""' 'reference_test_qmix_gru_ss_h_teacher.log'
+sh ./test_uf.sh 'CUDA_VISIBLE_DEVICES="3" nohup python -u src/main.py --config=pd_qmix_gru4mpe --env-config=gymma with env_args.key="pz-mpe-simple-reference-v3" predictor_mode="single_step" use_history=True exp_name="REFERENCE-QMIX-GRU-SS-H-STUDENT" test_nepisode=1280 evaluate=True checkpoint_path=""' 'reference_test_qmix_gru_ss_h_student.log'
+
+sh ./test_uf.sh 'CUDA_VISIBLE_DEVICES="2" nohup python -u src/main.py --config=pd_qmix_gru4mpe --env-config=gymma with env_args.key="pz-mpe-simple-reference-v3" predictor_mode="multi_step" use_history=True exp_name="REFERENCE-QMIX-GRU-MS-H-STUDENT" test_nepisode=1280 evaluate=True checkpoint_path=""' 'reference_test_qmix_gru_ms_h_student.log'

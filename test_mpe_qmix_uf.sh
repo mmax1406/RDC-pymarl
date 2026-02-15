@@ -1,5 +1,5 @@
-+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++MPE+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
--------------------------------------------------------------TAG-------------------------------------------------------------
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++MPE+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+# -------------------------------------------------------------TAG-------------------------------------------------------------
 sh ./test_uf.sh 'CUDA_VISIBLE_DEVICES="0" nohup python -u src/main.py --config=pd_qmix_gru4mpe --env-config=gymma with env_args.key="pz-mpe-simple-tag-v3" env_args.pretrained_wrapper="PretrainedTag" predictor_mode="none" exp_name="TAG-QMIX-B" test_nepisode=1280 evaluate=True checkpoint_path=""' 'tag_test_qmix_b.log'
 sh ./test_uf.sh 'CUDA_VISIBLE_DEVICES="1" nohup python -u src/main.py --config=pd_qmix_gru4mpe --env-config=gymma with env_args.key="pz-mpe-simple-tag-v3" env_args.pretrained_wrapper="PretrainedTag" predictor_mode="none" exp_name="TAG-QMIX-N" test_nepisode=1280 evaluate=True checkpoint_path=""' 'tag_test_qmix_n.log'
 sh ./test_uf.sh 'CUDA_VISIBLE_DEVICES="2" nohup python -u src/main.py --config=pd_qmix_gru4mpe --env-config=gymma with env_args.key="pz-mpe-simple-tag-v3" env_args.pretrained_wrapper="PretrainedTag" predictor_mode="none" exp_name="TAG-QMIX-DA" test_nepisode=1280 evaluate=True checkpoint_path=""' 'tag_test_qmix_da.log'
