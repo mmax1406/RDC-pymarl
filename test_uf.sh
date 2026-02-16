@@ -10,9 +10,27 @@ fi
 base_command=$1
 log_file=$2
 
-# 分为集内和集外
+# --- AUTO-LOAD LOGIC START ---
+# Extract exp_name from the base_command
+EXP_NAME=$(echo "$base_command" | grep -oP 'exp_name="\K[^"]+')
+MODEL_ROOT="./results/models"
+
+# Find the latest directory matching that experiment name
+# We sort by modification time (newest first) to pick the most recent training run
+LATEST_CKPT=$(find "$MODEL_ROOT" -maxdepth 3 -type d -name "*${EXP_NAME}*" -printf '%T+ %p\n' 2>/dev/null | sort -r | head -n 1 | cut -d' ' -f2)
+
+if [ -z "$LATEST_CKPT" ]; then
+    echo "ERROR: No checkpoint folder found for exp_name: $EXP_NAME in $MODEL_ROOT"
+    exit 1
+else
+    echo "DEBUG: Found latest weights at $LATEST_CKPT"
+fi
+# --- AUTO-LOAD LOGIC END ---
+
+# 分为集内 (In-distribution) 和集外 (Out-of-distribution)
 for i in $(seq 0 1); do
-    echo "DEBUG: Current i = $i"
+    echo "DEBUG: Current iteration i = $i"
+    
     if [ $i -eq 0 ]; then
         delay_value=6
         delay_scope=3
@@ -20,32 +38,28 @@ for i in $(seq 0 1); do
         delay_value=9
         delay_scope=3
     fi
-    # 根据log_file和delay_value设置n_expand_action的值
-    if [ "$log_file" != "${log_file%ss_h*}" ]; then
-        # 如果log_file包含ss_h，则设置最大的n_expand_action，（MPE中最大为9，SMAC中最大为6）
-        n_expand_action=9
-    elif [ "$log_file" != "${log_file%ms_h*}" ]; then
-        # 如果log_file包含ms_h，则设置训练时相同的n_expand_action，（MPE中最大为9，SMAC中最大为6）
+
+    # 根据 log_file 和 delay_value 设置 n_expand_action 的值
+    if [[ "$log_file" == *"ss_h"* ]] || [[ "$log_file" == *"ms_h"* ]]; then
+        # History-based models use a fixed expansion (usually 9 for MPE)
         n_expand_action=9
     else
-        # 如果log_file既不包含ss_h也不包含ms_h，则n_expand_action=delay_value
-        n_expand_action=$((delay_value+delay_scope))
+        # Standard models expand to cover the maximum possible delay in the range
+        n_expand_action=$((delay_value + delay_scope))
     fi
 
     # 构造完整命令
-    full_command="${base_command} delay_type=\"uf\" delay_value=${delay_value} delay_scope=${delay_scope} n_expand_action=${n_expand_action} >> ${log_file} 2>&1 &"
-    
-    # 打印将要执行的命令
-    # echo "Executing: ${full_command}"
+    # Added: checkpoint_path="${LATEST_CKPT}" and ensure evaluate=True is present
+    full_command="${base_command} checkpoint_path=\"${LATEST_CKPT}\" evaluate=True delay_type=\"uf\" delay_value=${delay_value} delay_scope=${delay_scope} n_expand_action=${n_expand_action} >> ${log_file} 2>&1 &"
     
     # 执行命令
     eval ${full_command}
     
-    # 等待上一个命令完成（如果不需要等待可以去掉这一行）
+    # 等待上一个命令完成
     wait
     
-    # 可选：添加一些延迟以防止资源冲突
+    # 延迟防止资源冲突
     sleep 2
 done
 
-echo "All commands have been submitted."
+echo "Unfixed delay tests for $EXP_NAME submitted successfully."

@@ -10,25 +10,40 @@ fi
 base_command=$1
 log_file=$2
 
+# --- AUTO-LOAD LOGIC START ---
+# Extract exp_name from the base_command
+EXP_NAME=$(echo "$base_command" | grep -oP 'exp_name="\K[^"]+')
+MODEL_ROOT="./results/models"
+
+# Find the latest directory matching that experiment name
+# We look for the most recent timestamped folder
+LATEST_CKPT=$(find "$MODEL_ROOT" -maxdepth 3 -type d -name "*${EXP_NAME}*" -printf '%T+ %p\n' 2>/dev/null | sort -r | head -n 1 | cut -d' ' -f2)
+
+if [ -z "$LATEST_CKPT" ]; then
+    echo "ERROR: No checkpoint folder found for exp_name: $EXP_NAME in $MODEL_ROOT"
+    exit 1
+else
+    echo "DEBUG: Found latest weights at $LATEST_CKPT"
+fi
+# --- AUTO-LOAD LOGIC END ---
+
 delay_value=12
-# 循环执行n_expand_action从0到12的所有变体
+# 循环执行 n_expand_action 从 1 到 12 的所有变体
 for n_expand_action in $(seq 1 12); do
-    echo "DEBUG: Current delay_value = $delay_value"
+    echo "DEBUG: Current n_expand_action = $n_expand_action (Delay Fixed at $delay_value)"
 
     # 构造完整命令
-    full_command="${base_command} delay_type=\"f\" delay_value=${delay_value} delay_scope=0 n_expand_action=${n_expand_action} >> ${log_file} 2>&1 &"
-    
-    # 打印将要执行的命令
-    # echo "Executing: ${full_command}"
+    # Added: checkpoint_path and evaluate=True
+    full_command="${base_command} checkpoint_path=\"${LATEST_CKPT}\" evaluate=True delay_type=\"f\" delay_value=${delay_value} delay_scope=0 n_expand_action=${n_expand_action} >> ${log_file} 2>&1 &"
     
     # 执行命令
     eval ${full_command}
     
-    # 等待上一个命令完成（如果不需要等待可以去掉这一行）
+    # 等待上一个命令完成
     wait
     
-    # 可选：添加一些延迟以防止资源冲突
+    # 延迟防止资源冲突
     sleep 2
 done
 
-echo "All commands have been submitted."
+echo "Expansion sweep for $EXP_NAME is complete."
