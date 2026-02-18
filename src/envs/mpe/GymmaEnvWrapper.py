@@ -36,10 +36,13 @@ class GymmaEnvWrapper(MultiAgentEnv):
         reward_scalarisation,
         **kwargs,
     ):
+        self.use_kalman = kwargs.pop("use_kalman_filter", False)
+        
         self.key = key
         self._env = gym.make(f"{key}", **kwargs)
         self._env = TimeLimit(self._env, max_episode_steps=time_limit)
         self._env = FlattenObservation(self._env)
+        
         
         if pretrained_wrapper:
             self._env = getattr(pretrained, pretrained_wrapper)(self._env)
