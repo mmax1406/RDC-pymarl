@@ -1,6 +1,6 @@
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++MPE+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 # -------------------------------------------------------------TAG-------------------------------------------------------------
-CUDA_VISIBLE_DEVICES="0" nohup python -u src/main.py --config=pd_qmix_gru4mpe --env-config=gymma with env_args.key="pz-mpe-simple-tag-v3" env_args.pretrained_wrapper="PretrainedTag" predictor_mode="none" delay_aware=True cheating_start_value=1.0 cheating_end_value=1.0 exp_name="TAG-QMIX-B" >> tag_qmix_b.log 2>&1 &
+CUDA_VISIBLE_DEVICES="0" nohup python -u src/main.py --config=pd_qmix_gru4mpe --env-config=gymma with env_args.key="pz-mpe-simple-tag-v3" env_args.pretrained_wrapper="PretrainedTag" t_max=100 predictor_mode="none" delay_aware=True cheating_start_value=1.0 cheating_end_value=1.0 exp_name="TAG-QMIX-B" >> tag_qmix_b.log 2>&1 &
 CUDA_VISIBLE_DEVICES="1" nohup python -u src/main.py --config=pd_qmix_gru4mpe --env-config=gymma with env_args.key="pz-mpe-simple-tag-v3" env_args.pretrained_wrapper="PretrainedTag" predictor_mode="none" exp_name="TAG-QMIX-N" >> tag_qmix_n.log 2>&1 &
 CUDA_VISIBLE_DEVICES="0" nohup python -u src/main.py --config=pd_qmix_gru4mpe --env-config=gymma with env_args.key="pz-mpe-simple-tag-v3" env_args.pretrained_wrapper="PretrainedTag" predictor_mode="none" delay_aware=True exp_name="TAG-QMIX-DA" >> tag_qmix_da.log 2>&1 &
 

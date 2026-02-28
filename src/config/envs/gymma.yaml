@@ -4,4 +4,4 @@ env_args:
   key: null
   time_limit: 25
   pretrained_wrapper: null
-  use_kalman_filter: True  # Your custom flag
+  use_kalman_filter: True

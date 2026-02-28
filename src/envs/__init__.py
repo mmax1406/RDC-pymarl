@@ -23,6 +23,7 @@ try:
     from .mpe.GymmaEnvWrapper import GymmaEnvWrapper
 except Exception as e:
     print(e)
+    print("Look at me please")
     mpe = False
 
 def __check_and_prepare_smac_kwargs(kwargs):
