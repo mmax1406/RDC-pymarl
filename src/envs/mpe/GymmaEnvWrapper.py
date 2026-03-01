@@ -10,8 +10,6 @@ from envs.multiagentenv import MultiAgentEnv
 from envs.wrappers import FlattenObservation
 import envs.mpe.pretrained as pretrained  # noqa
 
-from envs.mpe.stateManipulation_MPE import *
-
 try:
     from envs.pz_wrapper import PettingZooWrapper  # noqa
 except ImportError:
@@ -38,9 +36,6 @@ class GymmaEnvWrapper(MultiAgentEnv):
         reward_scalarisation,
         **kwargs,
     ):
-        self.use_kalman = kwargs.pop("use_kalman_filter", False)
-        if self.use_kalman:
-            self.kf = {}
         
         self.key = key
         self._env = gym.make(f"{key}", **kwargs)
@@ -151,9 +146,6 @@ class GymmaEnvWrapper(MultiAgentEnv):
         obs, info = self._env.reset(seed=seed, options=options)
         self._obs = self._pad_observation(obs)
         self._obs = self.reshape_obs()
-
-        if self.use_kalman:
-            self.kf = init_kalmans(self._env, self._obs)
             
         return self._obs.copy(), info
 
@@ -360,19 +352,6 @@ class GymmaEnvWrapper(MultiAgentEnv):
             self.ally_delay_values_history[i] = self.ally_delay_values_history[i] + ally_delay_values[i]
             obs.append(agent_obs.copy())
         self.delay_obs = obs
-
-        # Here i can input my kalman logic 
-        if self.use_kalman:
-            kalman_fixed_obs = obs.copy()
-            for ii in range(self.n_agents):
-                # Need to ensure this update only happend once somehow
-                kf = self.kf[ii]
-                kf.predict()
-                kf.update(self.origin_agent_obs[ii][delay_idx])
-                fixed_val, _ = kf.predict_future(delay_value)
-                kalman_fixed_obs[ii] = np.array(fixed_val).flatten() 
-                kalman_fixed_obs[ii][:4] = agent_obs[:4].copy() # I know my own position and velocity
-            obs = kalman_fixed_obs.copy()
 
         return obs, enemy_delay_values, ally_delay_values
 

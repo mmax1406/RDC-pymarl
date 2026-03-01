@@ -1,152 +1,122 @@
 import torch
 import torch.nn as nn
 import numpy as np
-import os
 
 class GRUEstimator(nn.Module):
-    def __init__(self, model_path, s_dim, h_dim, device='cpu'):
+    def __init__(self, model_path, s_dim, h_dim, device='cuda'):
         super().__init__()
-        self.device = device
+        self.device = torch.device(device if torch.cuda.is_available() else 'cpu')
         
-        # 1. Reconstruct EXACT Architecture
         self.gru = nn.GRU(s_dim, h_dim, num_layers=2, batch_first=True)
         self.fc = nn.Linear(h_dim, s_dim)
 
-        # 2. Register buffers
         self.register_buffer('mu_s', torch.zeros(s_dim))
         self.register_buffer('std_s', torch.ones(s_dim))
         self.register_buffer('mu_d', torch.zeros(s_dim))
         self.register_buffer('std_d', torch.ones(s_dim))
         
-        # 3. Load State Dict
         state_dict = torch.load(model_path, map_location=self.device)
         self.load_state_dict(state_dict)
-        
         self.to(self.device)
         self.eval()
 
     def forward(self, s_norm, h=None):
-        # --- DIMENSION PROTECTION ---
-        # GRU expects (Batch, Seq, Dim). 
-        # If we get (Dim), make it (1, 1, Dim)
-        # If we get (Batch, Dim), make it (Batch, 1, Dim)
-        if s_norm.dim() == 1:
-            s_norm = s_norm.view(1, 1, -1)
-        elif s_norm.dim() == 2:
-            s_norm = s_norm.unsqueeze(1)
-            
         out, h_new = self.gru(s_norm, h)
-        # return self.fc(out), h_new # Original: out is (B, S, H)
-        
-        # Ensure the linear layer output is shaped consistently
         return self.fc(out), h_new
 
     def predict_step(self, x_curr, h_in):
         """
-        Input: x_curr (numpy array), h_in (tensor or None)
-        Output: x_next (numpy array), h_out (tensor)
+        Processes a single step on the GPU.
+        Input: x_curr (Tensor or Numpy), h_in (Tensor or None)
         """
         with torch.no_grad():
-            # Convert and move to GPU
-            x_tensor = torch.as_tensor(x_curr, dtype=torch.float32, device=self.device)
+            # Ensure input is a GPU Tensor
+            if isinstance(x_curr, np.ndarray):
+                x_tensor = torch.from_numpy(x_curr).float().to(self.device)
+            else:
+                x_tensor = x_curr.to(self.device).float()
             
-            # 1. Normalize
+            if h_in is not None:
+                h_in = h_in.to(self.device)
+            
+            # Normalize -> Predict -> Denormalize
             s_norm = (x_tensor - self.mu_s) / self.std_s
+            delta_norm_seq, h_out = self.forward(s_norm.view(1, 1, -1), h_in)
+            delta_phys = (delta_norm_seq.view(-1) * self.std_d) + self.mu_d
             
-            # 2. Forward (forward handles unsqueezing now)
-            delta_norm_seq, h_out = self.forward(s_norm, h_in)
-            
-            # 3. Squeeze back to 1D for physical math
-            delta_norm = delta_norm_seq.view(-1)
-            
-            # 4. Denormalize
-            delta_phys = (delta_norm * self.std_d) + self.mu_d
-            
-            # 5. Physics update
             x_next = x_tensor + delta_phys
-            
-            return x_next.cpu().numpy(), h_out
+            return x_next, h_out
 
 class GRUKalmanFilter:
-    def __init__(self, estimator, Q, R, ic = None):
+    def __init__(self, estimator, Q, R, ic=None):
         self.est = estimator
-        self.Q = Q  # Process noise covariance
-        self.R = R  # Measurement noise covariance
+        self.device = estimator.device
         
-        # State tracking (The "Grounded" State)
-        self.x = ic 
-        self.h = None
-        self.P = np.eye(Q.shape[0]) * 0.1
+        # Move noise covariances to GPU
+        self.Q = torch.from_numpy(Q).float().to(self.device)
+        self.R = torch.from_numpy(R).float().to(self.device)
+        
+        # Use the reset method for initial setup
+        self.reset(ic)
 
     def reset(self, ic=None):
-        self.x = ic
+        """
+        Grounds the filter. Moves the initial condition to GPU 
+        and wipes the hidden state.
+        """
+        if ic is not None:
+            if isinstance(ic, np.ndarray):
+                self.x = torch.from_numpy(ic).float().to(self.device)
+            else:
+                self.x = ic.to(self.device).float()
+        else:
+            self.x = None
+            
         self.h = None
-        self.P = np.eye(self.Q.shape[0]) * 0.1
+        # P must also live on the GPU
+        self.P = torch.eye(self.Q.shape[0], device=self.device) * 0.1
 
     def predict(self):
-        """Standard KF Prediction: Moves the 'grounded' state one step forward."""
         if self.x is None: return
-        
-        # 1. GRU Step
+        # Logic stays on GPU
         self.x, self.h = self.est.predict_step(self.x, self.h)
-        
-        # 2. Covariance Projection
         self.P = self.P + self.Q
 
     def update(self, z_measurement):
-    
-        # 1. GPU/Type Protection: Ensure measurement is a flat NumPy array
-        if torch.is_tensor(z_measurement):
-            z_measurement = z_measurement.detach().cpu().numpy()
-        
-        # Ensure it is 1D (flatten any batch/env dimensions like (1, 4) -> (4,))
-        z_measurement = np.atleast_1d(z_measurement).flatten()
-
-        # 2. Initialization Protection
-        if self.x is None: 
-            self.x = z_measurement
+        if self.x is None:
+            self.reset(z_measurement)
             return
-        
-        # 3. Shape Protection: Ensure x is also flat
-        self.x = self.x.flatten()
-        
-        # Validate dimensions match before proceeding
-        if self.x.shape[0] != z_measurement.shape[0]:
-            raise ValueError(f"Dimension mismatch! Internal state x is {self.x.shape[0]}, "
-                            f"but received measurement z of {z_measurement.shape[0]}")
 
-        # 4. Kalman Math
-        # H is typically Identity for direct state observation
+        # Ensure measurement is a GPU tensor
+        if isinstance(z_measurement, np.ndarray):
+            z_meas = torch.from_numpy(z_measurement).float().to(self.device).flatten()
+        else:
+            z_meas = z_measurement.to(self.device).float().flatten()
+
+        # Kalman Math on GPU
         dim = self.x.shape[0]
-        H = np.eye(dim) 
+        I = torch.eye(dim, device=self.device)
+        H = I # Identity observation matrix
         
-        # Innovation (Residual)
-        y = z_measurement - (H @ self.x)
-        
-        # Innovation Covariance
+        y = z_meas - (H @ self.x)
         S = H @ self.P @ H.T + self.R
+        K = self.P @ H.T @ torch.linalg.inv(S)
         
-        # Kalman Gain
-        K = self.P @ H.T @ np.linalg.inv(S)
-        
-        # 5. Update State and Covariance
         self.x = self.x + (K @ y)
-        self.P = (np.eye(dim) - K @ H) @ self.P
+        self.P = (I - K @ H) @ self.P
 
     def predict_future(self, delay_steps):
         """
-        ROLLOUT: Makes a copy of the grounded (delayed) state 
-        and fast-forwards it to the present.
+        Rollout on GPU, but returns NumPy to the CPU for the environment.
         """
         if self.x is None: return None, None
         
-        # 1. Create temporary copies (Do not modify the grounded state!)
-        temp_x = self.x.copy()
+        # Clone to avoid modifying the 'grounded' state
+        temp_x = self.x.clone()
         temp_h = self.h.clone() if self.h is not None else None
         
-        # 2. Rollout using stored actions
         for _ in range(delay_steps):
-            # Assuming zero-order hold (last action) if no new action is provided
             temp_x, temp_h = self.est.predict_step(temp_x, temp_h)
 
-        return temp_x, temp_h
+        # Final move back to CPU for the policy/environment
+        return temp_x.cpu().numpy(), temp_h

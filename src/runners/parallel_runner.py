@@ -7,6 +7,9 @@ import numpy as np
 import time
 import copy
 
+from envs.mpe.stateManipulation_MPE import *
+import collections
+import time
 
 # Based (very) heavily on SubprocVecEnv from OpenAI Baselines
 # https://github.com/openai/baselines/blob/master/baselines/common/vec_env/subproc_vec_env.py
@@ -16,6 +19,7 @@ class ParallelRunner:
         self.args = args
         self.logger = logger
         self.batch_size = self.args.batch_size_run
+        self.delay_value = args.delay_value
 
         # Make subprocesses for the envs
         self.parent_conns, self.worker_conns = zip(*[Pipe() for _ in range(self.batch_size)])
@@ -52,6 +56,46 @@ class ParallelRunner:
         self.last_test_stats = {}
         
         self.log_train_stats_t = -100000
+
+        # Maxim Custom
+        self.use_kalman = False
+        self.dataCollection = True
+        self.collection_buffer = {
+            "states": [],
+            "next_states": [],
+            "dones": []
+        }
+        self.lastObs_Forlog = [None for _ in range(self.batch_size)]
+
+        # Inside __init__
+        if self.use_kalman:
+            self.max_buffer_size = 25 
+            self.n_agents = self.env_info['n_agents']
+            s_dim = self.env_info["obs_shape"] 
+
+            # 1. Initialize the Estimator once
+            self.kf_estimator = GRUEstimator(
+                model_path=f"src/envs/mpe/weights/policy_aware_gru_pz-mpe-simple-{self.env_info['map_type']}-v3.pth",
+                s_dim=s_dim, 
+                h_dim=128
+            )
+
+            # 2. Initialize KFs and Buffers
+            self.kfs = {}
+            self.obs_buffers = {} # Dictionary of Dictionaries of Deques
+            
+            for b_idx in range(self.batch_size):
+                self.kfs[b_idx] = {}
+                self.obs_buffers[b_idx] = {}
+                for a_id in range(self.n_agents):
+                    # The Kalman Filter itself
+                    self.kfs[b_idx][a_id] = GRUKalmanFilter(
+                        self.kf_estimator, 
+                        Q=np.eye(s_dim) * 0.05,
+                        R=np.eye(s_dim) * 0.02
+                    )
+                    # The observation buffer for this specific agent
+                    self.obs_buffers[b_idx][a_id] = collections.deque(maxlen=self.max_buffer_size)
 
     def setup(self, scheme, groups, preprocess, mac):
         if self.args.use_cuda and not self.args.cpu_inference:
@@ -97,7 +141,7 @@ class ParallelRunner:
             pre_transition_data["enemy_delay_values"] = []
             pre_transition_data["ally_delay_values"] = []
         # Get the obs, state and avail_actions back
-        for parent_conn in self.parent_conns:
+        for idx, parent_conn in enumerate(self.parent_conns):
             data = parent_conn.recv()
             pre_transition_data["state"].append(data["state"])
             pre_transition_data["avail_actions"].append(data["avail_actions"])
@@ -107,10 +151,25 @@ class ParallelRunner:
                 pre_transition_data["enemy_delay_values"].append(data["enemy_delay_values"])
                 pre_transition_data["ally_delay_values"].append(data["ally_delay_values"])
 
+            if self.dataCollection:
+                # Seed the "Previous State" with the initial real_obs
+                self.lastObs_Forlog[idx] = np.array(data["real_obs"]).copy()
+
+            if self.use_kalman:
+                # We use real_obs to "ground" the filter at the start
+                raw_obs = data["real_obs"] 
+                for a_id in range(self.n_agents):
+                    # Reset the Filter
+                    self.kfs[idx][a_id].reset(ic=raw_obs[a_id])
+                    # Clear and seed the buffer
+                    self.obs_buffers[idx][a_id].clear()
+                    self.obs_buffers[idx][a_id].append(raw_obs[a_id])
+
         self.batch.update(pre_transition_data, ts=0, mark_filled=True)
 
         self.t = 0
         self.env_steps_this_run = 0
+
 
     def run(self, test_mode=False):
         self.reset()
@@ -164,6 +223,7 @@ class ParallelRunner:
                 pre_transition_data["enemy_delay_values"] = []
                 pre_transition_data["ally_delay_values"] = []
             # Receive data back for each unterminated env
+            evaltime = []
             for idx, parent_conn in enumerate(self.parent_conns):
                 if not terminated[idx]:
                     data = parent_conn.recv()
@@ -191,6 +251,26 @@ class ParallelRunner:
                         pre_transition_data["real_obs"].append(data["real_obs"])
                         pre_transition_data["enemy_delay_values"].append(data["enemy_delay_values"])
                         pre_transition_data["ally_delay_values"].append(data["ally_delay_values"])
+
+                    if self.use_kalman:
+                        # We use real_obs to "ground" the filter at the start
+                        raw_obs = data["real_obs"] 
+                        for a_id in range(self.n_agents):
+                            self.obs_buffers[idx][a_id].append(raw_obs[a_id])
+                        start = time.time()
+                        clean_obs, delayed_obs, kalman_fixed_obs = get_observation_KF(self.env_info, self.obs_buffers[idx], self.delay_value, self.kfs[idx])
+                        evaltime.append((time.time()-start))
+            # print(np.mean(evaltime))
+
+            # Maxim
+            if self.dataCollection:
+                curr_real_obs = np.array(pre_transition_data["real_obs"])
+                curr_dones = np.array(post_transition_data['terminated'])
+                self.collection_buffer["states"].append(np.array(self.lastObs_Forlog))
+                self.collection_buffer["next_states"].append(curr_real_obs)
+                self.collection_buffer["dones"].append(curr_dones)  
+                # Update the "Previous State" tracker for the next step
+                self.lastObs_Forlog = curr_real_obs.copy()
 
             # Add post_transiton data into the batch
             self.batch.update(post_transition_data, bs=envs_not_terminated, ts=self.t, mark_filled=False)
@@ -259,6 +339,18 @@ class ParallelRunner:
 
         return self.batch
 
+    def save_dataset(self, filename="gru_training_data.npz"):
+        # Convert lists of steps into 4D arrays: (Time, Batch, Agent, Dim)
+        # np.stack is perfect for this.
+        save_dict = {
+            "states": np.stack(self.collection_buffer["states"]),
+            "next_states": np.stack(self.collection_buffer["next_states"]),
+            "dones": np.stack(self.collection_buffer["dones"])
+        }
+
+        np.savez_compressed(filename, **save_dict)
+        print(f"Dataset saved to {filename}. Total steps logged: {len(save_dict['states'])}")
+
     def save_replay(self):
         print("----------------------------Replay----------------------------")
         if self.args.save_replay:
@@ -300,8 +392,9 @@ class ParallelRunner:
 
 
 def env_worker(remote, env_fn, delay_type, delay_value, delay_scope, delay_aware):
-    # Make environment
+    # Make environment  
     env = env_fn.x()
+
     while True:
         cmd, data = remote.recv()
         if cmd == "step":

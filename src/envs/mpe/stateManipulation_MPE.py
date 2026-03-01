@@ -93,18 +93,16 @@ def get_delays(env, delay=0, max_delay=13, use_dynamic_delay=False):
                 
     return delays
 
-def get_observation_KF(env, obsBuffers, delay_matrix, kalmans):
+def get_observation_KF(env, obsBuffers, d, kalmans):
     """
     Core logic: Predicts the current observation from a delayed history.
     """
     clean_obs, delayed_obs, kalman_fixed_obs = {}, {}, {}
-    env_name = env.unwrapped.metadata.get('name', '')
 
-    for agent_id in env.agents:
+    for agent_id in range(env['n_agents']):
         # 1. Get Ground Truth (Latest in buffer)
         clean_obs[agent_id] = obsBuffers[agent_id][-1].copy()
             
-        d = int(delay_matrix[agent_id])
         kf = kalmans[agent_id]
         
         # 2. Get Delayed Measurement (z)

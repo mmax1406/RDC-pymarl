@@ -270,8 +270,10 @@ def run_sequential(args, logger):
             logger.print_recent_stats()
             last_log_T = runner.t_env
 
+    runner.save_dataset('simulator_data_simple_'+env_info['map_type']+'_v3.npz')
     runner.close_env()
     logger.console_logger.info("Finished Training")
+
 
     # flush
     sys.stdout.flush()
