@@ -58,8 +58,8 @@ class ParallelRunner:
         self.log_train_stats_t = -100000
 
         # Maxim Custom
-        self.use_kalman = False
-        self.dataCollection = True
+        self.use_kalman = True
+        self.dataCollection = False
         self.collection_buffer = {
             "states": [],
             "next_states": [],
@@ -75,7 +75,7 @@ class ParallelRunner:
 
             # 1. Initialize the Estimator once
             self.kf_estimator = GRUEstimator(
-                model_path=f"src/envs/mpe/weights/policy_aware_gru_pz-mpe-simple-{self.env_info['map_type']}-v3.pth",
+                model_path=f"src/envs/mpe/weights/policy_aware_gru_simple_{self.env_info['map_type']}_v3.pth",
                 s_dim=s_dim, 
                 h_dim=128
             )
@@ -163,7 +163,8 @@ class ParallelRunner:
                     self.kfs[idx][a_id].reset(ic=raw_obs[a_id])
                     # Clear and seed the buffer
                     self.obs_buffers[idx][a_id].clear()
-                    self.obs_buffers[idx][a_id].append(raw_obs[a_id])
+                    initial_fill = [raw_obs[a_id].copy()] * self.obs_buffers[idx][a_id].maxlen
+                    self.obs_buffers[idx][a_id].extend(initial_fill)
 
         self.batch.update(pre_transition_data, ts=0, mark_filled=True)
 
@@ -243,15 +244,6 @@ class ParallelRunner:
                     terminated[idx] = data["terminated"]
                     post_transition_data["terminated"].append((env_terminated,))
 
-                    # Data for the next timestep needed to select an action
-                    pre_transition_data["state"].append(data["state"])
-                    pre_transition_data["avail_actions"].append(data["avail_actions"])
-                    pre_transition_data["obs"].append(data["obs"])
-                    if self.args.delay_type != "":
-                        pre_transition_data["real_obs"].append(data["real_obs"])
-                        pre_transition_data["enemy_delay_values"].append(data["enemy_delay_values"])
-                        pre_transition_data["ally_delay_values"].append(data["ally_delay_values"])
-
                     if self.use_kalman:
                         # We use real_obs to "ground" the filter at the start
                         raw_obs = data["real_obs"] 
@@ -260,6 +252,19 @@ class ParallelRunner:
                         start = time.time()
                         clean_obs, delayed_obs, kalman_fixed_obs = get_observation_KF(self.env_info, self.obs_buffers[idx], self.delay_value, self.kfs[idx])
                         evaltime.append((time.time()-start))
+                        delayedobs = np.array([kalman_fixed_obs[a_id] for a_id in range(self.n_agents)], dtype=np.float32)
+                    else:
+                        delayedobs = np.array(data["obs"], dtype=np.float32)
+
+                    # Data for the next timestep needed to select an action
+                    pre_transition_data["state"].append(data["state"])
+                    pre_transition_data["avail_actions"].append(data["avail_actions"])
+                    pre_transition_data["obs"].append(delayedobs)
+                    if self.args.delay_type != "":
+                        pre_transition_data["real_obs"].append(data["real_obs"])
+                        pre_transition_data["enemy_delay_values"].append(data["enemy_delay_values"])
+                        pre_transition_data["ally_delay_values"].append(data["ally_delay_values"])
+
             # print(np.mean(evaltime))
 
             # Maxim
@@ -340,16 +345,17 @@ class ParallelRunner:
         return self.batch
 
     def save_dataset(self, filename="gru_training_data.npz"):
-        # Convert lists of steps into 4D arrays: (Time, Batch, Agent, Dim)
-        # np.stack is perfect for this.
-        save_dict = {
-            "states": np.stack(self.collection_buffer["states"]),
-            "next_states": np.stack(self.collection_buffer["next_states"]),
-            "dones": np.stack(self.collection_buffer["dones"])
-        }
+        if self.dataCollection:
+            # Convert lists of steps into 4D arrays: (Time, Batch, Agent, Dim)
+            # np.stack is perfect for this.
+            save_dict = {
+                "states": np.stack(self.collection_buffer["states"]),
+                "next_states": np.stack(self.collection_buffer["next_states"]),
+                "dones": np.stack(self.collection_buffer["dones"])
+            }
 
-        np.savez_compressed(filename, **save_dict)
-        print(f"Dataset saved to {filename}. Total steps logged: {len(save_dict['states'])}")
+            np.savez_compressed(filename, **save_dict)
+            print(f"Dataset saved to {filename}. Total steps logged: {len(save_dict['states'])}")
 
     def save_replay(self):
         print("----------------------------Replay----------------------------")
