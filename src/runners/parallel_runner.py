@@ -253,11 +253,13 @@ class ParallelRunner:
                         clean_obs, delayed_obs, kalman_fixed_obs = get_observation_KF(self.env_info, self.obs_buffers[idx], self.delay_value, self.kfs[idx])
                         evaltime.append((time.time()-start))
                         delayedobs = np.array([kalman_fixed_obs[a_id] for a_id in range(self.n_agents)], dtype=np.float32)
+                        delayedState = np.concatenate(delayedobs, axis=0).astype(np.float32)
                     else:
                         delayedobs = np.array(data["obs"], dtype=np.float32)
+                        delayedState = np.concatenate(delayedobs, axis=0).astype(np.float32)
 
                     # Data for the next timestep needed to select an action
-                    pre_transition_data["state"].append(data["state"])
+                    pre_transition_data["state"].append(delayedState)
                     pre_transition_data["avail_actions"].append(data["avail_actions"])
                     pre_transition_data["obs"].append(delayedobs)
                     if self.args.delay_type != "":
