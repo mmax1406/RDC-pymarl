@@ -58,12 +58,13 @@ class ParallelRunner:
         self.log_train_stats_t = -100000
 
         # Maxim Custom
-        self.use_kalman = True
-        self.dataCollection = False
+        self.use_kalman = False
+        self.dataCollection = True
         self.collection_buffer = {
             "states": [],
             "next_states": [],
-            "dones": []
+            "dones": [],
+            "actions": [],
         }
         self.lastObs_Forlog = [None for _ in range(self.batch_size)]
 
@@ -267,7 +268,7 @@ class ParallelRunner:
                         pre_transition_data["enemy_delay_values"].append(data["enemy_delay_values"])
                         pre_transition_data["ally_delay_values"].append(data["ally_delay_values"])
 
-            # print(np.mean(evaltime))
+            print(np.mean(evaltime))
 
             # Maxim
             if self.dataCollection:
@@ -276,6 +277,7 @@ class ParallelRunner:
                 self.collection_buffer["states"].append(np.array(self.lastObs_Forlog))
                 self.collection_buffer["next_states"].append(curr_real_obs)
                 self.collection_buffer["dones"].append(curr_dones)  
+                self.collection_buffer["actions"].append(cpu_actions)
                 # Update the "Previous State" tracker for the next step
                 self.lastObs_Forlog = curr_real_obs.copy()
 
@@ -353,7 +355,8 @@ class ParallelRunner:
             save_dict = {
                 "states": np.stack(self.collection_buffer["states"]),
                 "next_states": np.stack(self.collection_buffer["next_states"]),
-                "dones": np.stack(self.collection_buffer["dones"])
+                "dones": np.stack(self.collection_buffer["dones"]),
+                "actions": np.stack(self.collection_buffer["actions"]),
             }
 
             np.savez_compressed(filename, **save_dict)
