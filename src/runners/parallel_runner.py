@@ -250,7 +250,7 @@ class ParallelRunner:
                         for a_id in range(self.n_agents):
                             self.obs_buffers[idx][a_id].append(raw_obs[a_id])
                         start = time.time()
-                        clean_obs, delayed_obs, kalman_fixed_obs = get_observation_KF(self.env_info, self.obs_buffers[idx], self.delay_value, self.kfs[idx])
+                        clean_obs, delayed_obs, kalman_fixed_obs = get_observation_KF(self.env_info, self.obs_buffers[idx], self.delay_value, self.kfs[idx], self.t)
                         evaltime.append((time.time()-start))
                         delayedobs = np.array([kalman_fixed_obs[a_id] for a_id in range(self.n_agents)], dtype=np.float32)
                         delayedState = np.concatenate(delayedobs, axis=0).astype(np.float32)

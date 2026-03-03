@@ -93,7 +93,7 @@ def get_delays(env, delay=0, max_delay=13, use_dynamic_delay=False):
                 
     return delays
 
-def get_observation_KF(env, obsBuffers, d, kalmans):
+def get_observation_KF(env, obsBuffers, d, kalmans, t_now):
     """
     Core logic: Predicts the current observation from a delayed history.
     """
@@ -102,27 +102,28 @@ def get_observation_KF(env, obsBuffers, d, kalmans):
     for agent_id in range(env['n_agents']):
         # 1. Get Ground Truth (Latest in buffer)
         clean_obs[agent_id] = obsBuffers[agent_id][-1].copy()
-            
         kf = kalmans[agent_id]
         
         # 2. Get Delayed Measurement (z)
         h_idx = max(0, len(obsBuffers[agent_id]) - 1 - d)
         z_delayed = obsBuffers[agent_id][h_idx].flatten()
         delayed_obs[agent_id] = z_delayed.copy()
-        
-        # 3. Kalman Step
-        kf.predict()
-        kf.update(z_delayed)
 
-        # 4. Rollout to Present
-        fixed_val, _ = kf.predict_future(d)
+        if t_now>d:
+            # Update the 'grounded' state with the measurement
+            kf.predict()
+            kf.update(z_delayed)
+            # Predict the Rollout (Fast-Forward to the present)
+            fixed_val, _ = kf.predict_future(d)
+        else:
+            # Update the necessary steps
+            d = int(min(d,t_now))
+            # Predict the Rollout (Fast-Forward to the present)
+            fixed_val, _ = kf.predict_future(d)
         k_fixed = np.array(fixed_val).flatten()
 
         # 5. Injection Logic: Keep self-info clean (Real-time)
-        # In MPE, the first 4 values are typically [vel_x, vel_y, pos_x, pos_y]
-        # These are local to the agent and should NOT be delayed.
         k_fixed[:4] = clean_obs[agent_id][:4]
-        
         kalman_fixed_obs[agent_id] = k_fixed
 
     return clean_obs, delayed_obs, kalman_fixed_obs
