@@ -93,6 +93,34 @@ def get_delays(env, delay=0, max_delay=13, use_dynamic_delay=False):
                 
     return delays
 
+def fix_static_landmarks(env_info, agent_obs, clean_history_buffer):
+    """
+    Reconstructs perfectly accurate relative landmark positions.
+    Assumes agent_obs[:4] has already been 'injected' with current clean data.
+    """
+    fixed_obs = agent_obs.copy()
+    
+    # 1. Get current absolute position (Already injected into indices 2:4)
+    p_self_now = agent_obs[2:4]
+    
+    # 2. Get absolute position at step 0 (Start of buffer)
+    p_self_start = clean_history_buffer[0][2:4]
+
+    if env_info["map_type"] == "tag":
+        # Tag: 2 Obstacles (Indices 4:8)
+        # Step A: Find absolute landmark positions [L_rel_0 + P_self_0]
+        l_abs = clean_history_buffer[0][4:8] + np.tile(p_self_start, 2)
+        # Step B: Project to current relative frame [L_abs - P_self_now]
+        fixed_obs[4:8] = l_abs - np.tile(p_self_now, 2)
+
+    elif env_info["map_type"] == "spread":
+        # Spread: 3 Landmarks (Indices 4:10)
+        # Note: spread has 3 landmarks, so we need 6 indices (4,5, 6,7, 8,9)
+        l_abs = clean_history_buffer[0][4:10] + np.tile(p_self_start, 3)
+        fixed_obs[4:10] = l_abs - np.tile(p_self_now, 3)
+
+    return fixed_obs
+
 def get_observation_KF(env, obsBuffers, d, kalmans, t_now):
     """
     Core logic: Predicts the current observation from a delayed history.
@@ -125,5 +153,8 @@ def get_observation_KF(env, obsBuffers, d, kalmans, t_now):
         # 5. Injection Logic: Keep self-info clean (Real-time)
         k_fixed[:4] = clean_obs[agent_id][:4]
         kalman_fixed_obs[agent_id] = k_fixed
+
+        # Test if fixint the landmarks position does something
+        kalman_fixed_obs[agent_id] = fix_static_landmarks(env, kalman_fixed_obs[agent_id], obsBuffers[agent_id])
 
     return clean_obs, delayed_obs, kalman_fixed_obs

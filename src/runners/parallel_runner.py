@@ -58,8 +58,8 @@ class ParallelRunner:
         self.log_train_stats_t = -100000
 
         # Maxim Custom
-        self.use_kalman = False
-        self.dataCollection = True
+        self.use_kalman = True
+        self.dataCollection = False
         self.collection_buffer = {
             "states": [],
             "next_states": [],
@@ -70,7 +70,7 @@ class ParallelRunner:
 
         # Inside __init__
         if self.use_kalman:
-            self.max_buffer_size = 25 
+            self.max_buffer_size = 50 
             self.n_agents = self.env_info['n_agents']
             s_dim = self.env_info["obs_shape"] 
 

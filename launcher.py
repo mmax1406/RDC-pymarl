@@ -8,7 +8,7 @@ os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
 ROOT = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.join(ROOT, "src")
 
-testEnv = "spread"  # "tag" or "spread"
+testEnv = "tag"  # "tag" or "spread"
 delay = 10
 
 # --- 1. CONFIGURATION: TOGGLE THIS LINE ---
