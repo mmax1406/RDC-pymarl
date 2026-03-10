@@ -74,14 +74,7 @@ class ParallelRunner:
             self.n_agents = self.env_info['n_agents']
             s_dim = self.env_info["obs_shape"] 
 
-            # 1. Initialize the Estimator once
-            self.kf_estimator = GRUEstimator(
-                model_path=f"src/envs/mpe/weights/policy_aware_gru_simple_{self.env_info['map_type']}_v3.pth",
-                s_dim=s_dim, 
-                h_dim=128
-            )
-
-            # 2. Initialize KFs and Buffers
+            # Initialize KFs and Buffers
             self.kfs = {}
             self.obs_buffers = {} # Dictionary of Dictionaries of Deques
             
@@ -91,7 +84,7 @@ class ParallelRunner:
                 for a_id in range(self.n_agents):
                     # The Kalman Filter itself
                     self.kfs[b_idx][a_id] = GRUKalmanFilter(
-                        self.kf_estimator, 
+                        self.env_info,
                         Q=np.eye(s_dim) * 0.05,
                         R=np.eye(s_dim) * 0.02
                     )
@@ -268,7 +261,7 @@ class ParallelRunner:
                         pre_transition_data["enemy_delay_values"].append(data["enemy_delay_values"])
                         pre_transition_data["ally_delay_values"].append(data["ally_delay_values"])
 
-            print(np.mean(evaltime))
+            # print(np.mean(evaltime))
 
             # Maxim
             if self.dataCollection:
@@ -374,6 +367,7 @@ class ParallelRunner:
         if self.args.common_reward:
             self.logger.log_stat("eval/" + prefix + "return_mean", np.mean(returns), self.t_env)
             self.logger.log_stat("eval/" + prefix + "return_std", np.std(returns), self.t_env)
+            self.logger.log_stat("eval/" + prefix + "delay_value", self.delay_value, self.t_env)
         else:
             for i in range(self.args.n_agents):
                 self.logger.log_stat(
@@ -392,6 +386,9 @@ class ParallelRunner:
             )
             self.logger.log_stat(
                 "eval/" + prefix + "total_return_std", total_returns.std(), self.t_env
+            )
+            self.logger.log_stat(
+                "eval/" + prefix + "delay_value", self.delay_value, self.t_env
             )
         returns.clear()
 

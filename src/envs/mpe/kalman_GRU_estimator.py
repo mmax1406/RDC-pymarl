@@ -3,20 +3,32 @@ import torch.nn as nn
 import numpy as np
 
 class GRUEstimator(nn.Module):
-    def __init__(self, model_path, s_dim, h_dim, device='cuda'):
+    def __init__(self, model_path, s_dim, h_dim=512, device='cuda'):
         super().__init__()
         self.device = torch.device(device if torch.cuda.is_available() else 'cpu')
         
-        self.gru = nn.GRU(s_dim, h_dim, num_layers=2, batch_first=True)
+        # Match your training architecture (4 layers, 512 hidden)
+        self.gru = nn.GRU(s_dim, h_dim, num_layers=3, batch_first=True)
+        self.ln = nn.LayerNorm(h_dim)
         self.fc = nn.Linear(h_dim, s_dim)
 
+        # Buffers for normalization
         self.register_buffer('mu_s', torch.zeros(s_dim))
         self.register_buffer('std_s', torch.ones(s_dim))
         self.register_buffer('mu_d', torch.zeros(s_dim))
         self.register_buffer('std_d', torch.ones(s_dim))
         
-        state_dict = torch.load(model_path, map_location=self.device)
-        self.load_state_dict(state_dict)
+        # Load the checkpoint
+        ckpt = torch.load(model_path, map_location=self.device)
+        # Handle both full-save and state-dict-only formats
+        self.load_state_dict(ckpt['state_dict'] if 'state_dict' in ckpt else ckpt)
+        
+        if 'mu_s' in ckpt:
+            self.mu_s.copy_(ckpt['mu_s'])
+            self.std_s.copy_(ckpt['std_s'])
+            self.mu_d.copy_(ckpt['mu_d'])
+            self.std_d.copy_(ckpt['std_d'])
+            
         self.to(self.device)
         self.eval()
 
@@ -48,9 +60,13 @@ class GRUEstimator(nn.Module):
             return x_next, h_out
 
 class GRUKalmanFilter:
-    def __init__(self, estimator, Q, R, ic=None):
-        self.est = estimator
-        self.device = estimator.device
+    def __init__(self, env_info, Q = 0.05, R = 0.02, ic=None):
+        self.env_name = env_info['map_type']
+        self.s_dim = env_info['obs_shape']
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        
+        model_path = f"src/envs/mpe/weights/model_simple_{self.env_name}_v3_v3_GRU.pth"
+        self.est = GRUEstimator(model_path, self.s_dim, h_dim=512, device=self.device)
         
         # Move noise covariances to GPU
         self.Q = torch.from_numpy(Q).float().to(self.device)
@@ -59,12 +75,33 @@ class GRUKalmanFilter:
         # Use the reset method for initial setup
         self.reset(ic)
 
+    def transform_to_absolute(self, s_raw):
+        """Converts relative observations to absolute world coordinates."""
+        s_abs = s_raw.copy()
+        p_self = s_raw[..., 2:4] 
+        indices = [4, 6, 8, 12, 14] if 'tag' in self.env_name else [4, 6, 8, 10, 14]
+        for idx in indices:
+            if idx + 1 < s_abs.shape[-1]:
+                s_abs[..., idx:idx+2] += p_self
+        return s_abs
+    
+    def transform_to_relative(self, s_abs):
+        """Converts relative observations to absolute world coordinates."""
+        s_raw = s_abs.clone()
+        p_self = s_abs[..., 2:4] 
+        indices = [4, 6, 8, 12, 14] if 'tag' in self.env_name else [4, 6, 8, 10, 14]
+        for idx in indices:
+            if idx + 1 < s_raw.shape[-1]:
+                s_raw[..., idx:idx+2] -= p_self
+        return s_raw 
+
     def reset(self, ic=None):
         """
         Grounds the filter. Moves the initial condition to GPU 
         and wipes the hidden state.
         """
         if ic is not None:
+            ic = self.transform_to_absolute(ic)
             if isinstance(ic, np.ndarray):
                 self.x = torch.from_numpy(ic).float().to(self.device)
             else:
@@ -88,6 +125,7 @@ class GRUKalmanFilter:
             return
 
         # Ensure measurement is a GPU tensor
+        z_measurement = self.transform_to_absolute(z_measurement)
         if isinstance(z_measurement, np.ndarray):
             z_meas = torch.from_numpy(z_measurement).float().to(self.device).flatten()
         else:
@@ -119,4 +157,4 @@ class GRUKalmanFilter:
             temp_x, temp_h = self.est.predict_step(temp_x, temp_h)
 
         # Final move back to CPU for the policy/environment
-        return temp_x.cpu().numpy(), temp_h
+        return self.transform_to_relative(temp_x).cpu().numpy(), temp_h

@@ -121,6 +121,15 @@ def fix_static_landmarks(env_info, agent_obs, clean_history_buffer):
 
     return fixed_obs
 
+def transform_to_absolute(s_raw, env_name):
+    s_abs = s_raw.copy()
+    p_self = s_raw[:, :, :, 2:4]
+    # Using your specific indices for simple_tag
+    indices = [4, 6, 8, 12, 14] if 'tag' in env_name else [4, 6, 8, 10, 14]
+    for idx in indices:
+        s_abs[:, :, :, idx:idx+2] += p_self
+    return s_abs
+
 def get_observation_KF(env, obsBuffers, d, kalmans, t_now):
     """
     Core logic: Predicts the current observation from a delayed history.
